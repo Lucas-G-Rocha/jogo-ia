@@ -8,6 +8,29 @@ DIRECAO = ["cima", "baixo", "esquerda", "direita", "parado"]
 def decidir_acao(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_info, self_state):
     return random.choice(ACOES)
 
+
+
+# Parâmetros de jogo
+# TILE_SIZE = 48
+# ROWS, COLS = 11, 13
+# HUD_HEIGHT = 60
+# WIDTH, HEIGHT = COLS * TILE_SIZE, ROWS * TILE_SIZE
+# TEMPO_MOVIMENTO = 0.1
+# TEMPO_EXPLOSAO = 4
+# TEMPO_FOGO = 0.5
+# MAX_BOMBAS = 5
+# TEMPO_PARTIDA = 180
+
+# PONTOS_BLOCO = 100
+# PONTOS_POWERUP_COLETADO = 200
+# PONTOS_POWERUP_DESTRUIDO = -50
+# PONTOS_MATAR_JOGADOR = 1000
+# PONTOS_VITORIA = 10000
+
+# PROB_BOMBA = 0.12
+# PROB_FOGO = 0.10
+
+
 # Funções de camada inferior não executam outras funções dentro dela
 # Funções de camada intermediario executam funções de camada inferior
 # Funções de camada superior executam funções de camada intermediária e inferior
