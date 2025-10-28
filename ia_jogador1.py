@@ -1,4 +1,9 @@
 import random
+from sklearn.tree import DecisionTreeClassifier;
+import pandas as pd;
+import math
+import json
+
 
 indice_sequenciaDeAcoes = 0
 sequenciaDeAcoes = []
@@ -6,6 +11,8 @@ sequenciaDeAcoes = []
 ACOES = ["bomba", "atacar, fugir, afastar, aproximar, pegar"]
 DIRECAO = ["cima", "baixo", "esquerda", "direita", "parado"]
 def decidir_acao(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_info, self_state):
+    exibir_estado_jogo(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_info, self_state)
+    
     return random.choice(ACOES)
 
 
@@ -72,3 +79,175 @@ def decidir_acao(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_in
 # def quebrarParedes():
 # def atacarJogador():
 # def
+
+
+
+
+
+
+
+def arvoreDeDecisoes(TrainningData):
+    X_treino = TrainningData.iloc[:, :-1]
+    Y_treino = TrainningData.iloc[:, -1]
+    
+    model = DecisionTreeClassifier()
+    
+    model.fit(X_treino, Y_treino)
+    
+    return model
+
+def arvorePredict(realData):
+    TrainningData = gerar_dados_treinamento(50)
+    model = arvoreDeDecisoes(TrainningData)
+    result = model.predict(realData)
+    print("\n\n arvorePredict \n\n")
+    print(result)
+    
+
+
+def gerar_dados_treinamento(qtd_exemplos=30):
+    dados = []
+
+    for _ in range(qtd_exemplos):
+        # Posições no mapa (13x11)
+        player_x, player_y = random.randint(0, 12), random.randint(0, 10)
+        inimigo_x, inimigo_y = random.randint(0, 12), random.randint(0, 10)
+        bomba_x, bomba_y = random.randint(0, 12), random.randint(0, 10)
+
+        # Distâncias
+        distancia_inimigo = round(math.dist([player_x, player_y], [inimigo_x, inimigo_y]), 2)
+        distancia_bomba = round(math.dist([player_x, player_y], [bomba_x, bomba_y]), 2)
+
+        # Outros fatores do ambiente
+        num_bombas_ativas = random.randint(0, 5)
+        tempo_restante = random.randint(0, 300)
+        pontos = random.randint(0, 1000)
+        hud_info = random.randint(0, 3)
+        self_state = random.randint(0, 5)
+
+        # Ações possíveis (por enquanto só como rótulos de exemplo)
+        funcao = random.choice(["atacar", "fugir", "pegar_item", "quebrarBloco", "aproximar"])
+
+        # Monta uma linha
+        dados.append({
+            "player_x": player_x,
+            "player_y": player_y,
+            "inimigo_x": inimigo_x,
+            "inimigo_y": inimigo_y,
+            "bomba_x": bomba_x,
+            "bomba_y": bomba_y,
+            "distancia_inimigo": distancia_inimigo,
+            "distancia_bomba": distancia_bomba,
+            "num_bombas_ativas": num_bombas_ativas,
+            "tempo_restante": tempo_restante,
+            "pontos": pontos,
+            "hud_info": hud_info,
+            "self_state": self_state,
+            "funcao": funcao
+        })
+
+    dataframe = pd.DataFrame(dados)
+    print("\n\ngerar_Dado_Treinamento \n\n")
+    print(dataframe)
+    return dataframe
+
+
+def gerar_dado_real(qtd_exemplos=1):
+    dados = []
+
+    for _ in range(qtd_exemplos):
+        # Posições no mapa (13x11)
+        player_x, player_y = random.randint(0, 12), random.randint(0, 10)
+        inimigo_x, inimigo_y = random.randint(0, 12), random.randint(0, 10)
+        bomba_x, bomba_y = random.randint(0, 12), random.randint(0, 10)
+
+        # Distâncias
+        distancia_inimigo = round(math.dist([player_x, player_y], [inimigo_x, inimigo_y]), 2)
+        distancia_bomba = round(math.dist([player_x, player_y], [bomba_x, bomba_y]), 2)
+
+        # Outros fatores do ambiente
+        num_bombas_ativas = random.randint(0, 5)
+        tempo_restante = random.randint(0, 300)
+        pontos = random.randint(0, 1000)
+        hud_info = random.randint(0, 3)
+        self_state = random.randint(0, 5)
+
+
+        # Monta uma linha
+        dados.append({
+            "player_x": player_x,
+            "player_y": player_y,
+            "inimigo_x": inimigo_x,
+            "inimigo_y": inimigo_y,
+            "bomba_x": bomba_x,
+            "bomba_y": bomba_y,
+            "distancia_inimigo": distancia_inimigo,
+            "distancia_bomba": distancia_bomba,
+            "num_bombas_ativas": num_bombas_ativas,
+            "tempo_restante": tempo_restante,
+            "pontos": pontos,
+            "hud_info": hud_info,
+            "self_state": self_state
+        })
+    dataframe = pd.DataFrame(dados)
+    print("\n\ngerar_Dado_Real \n\n")
+    print(dataframe)
+    return dataframe
+    
+dadoReal = gerar_dado_real()
+
+arvorePredict(dadoReal)
+
+def exibir_estado_jogo(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_info, self_state):
+    print("===== ESTADO ATUAL DO JOGO =====\n")
+
+    # Player
+    print("🧍 Player:")
+    if hasattr(player, '__dict__'):
+        for k, v in player.__dict__.items():
+            print(f"  {k}: {v}")
+    else:
+        print(f"  {player}")
+
+    # Mapa
+    print("\n🗺️ Mapa:")
+    for linha in mapa:
+        print(" ", linha)
+
+    # Jogadores
+    print("\n👥 Jogadores:")
+    for i, j in enumerate(jogadores):
+        print(f"  Jogador {i + 1}:")
+        if hasattr(j, '__dict__'):
+            for k, v in j.__dict__.items():
+                print(f"    {k}: {v}")
+        else:
+            print(f"    {j}")
+
+    # Bombas
+    print("\n💣 Bombas:")
+    for i, b in enumerate(bombas):
+        print(f"  Bomba {i + 1}:")
+        if hasattr(b, '__dict__'):
+            for k, v in b.__dict__.items():
+                print(f"    {k}: {v}")
+        else:
+            print(f"    {b}")
+
+    # Tempo restante
+    print(f"\n⏱️ Tempo restante: {tempo_restante:.3f}")
+
+    # Pontos
+    print(f"\n⭐ Pontos: {pontos}")
+
+    # HUD info
+    print("\n🧭 HUD info:")
+    for k, v in hud_info.items():
+        print(f"  {k}: {v}")
+
+    # Self state
+    print("\n🧩 Self state:")
+    for k, v in self_state.items():
+        print(f"  {k}: {v}")
+
+    print("\n================================\n")
