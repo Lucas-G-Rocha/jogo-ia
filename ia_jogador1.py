@@ -38,33 +38,23 @@ def arvorePredict(realData):
 
 
 
-import random
-import pandas as pd
-
 def gerar_dados_treinamento(
-    qtd_exemplos=30,
-    funcao="fugir",
-    perigo=1,
-    oportunidade=0,
-    neutro=0,
-    player_index=1,
-    limite_distancia=5,
-    limite_powerup=12,
-    bomba_existe=1,
-    bomba_player=1
+qtd_exemplos=30,
+funcao="fugir",
+perigo=1,
+oportunidade=0,
+neutro=0,
+player_index=1,
+limite_distancia=5,
+limite_powerup=12,
+bomba_existe=1,
+bomba_player=1
 ):
     """
     Gera dados sintéticos controlados apenas com distâncias, para treinar IA.
-    
-    Parâmetros:
-    - qtd_exemplos: quantidade de exemplos a gerar
-    - funcao: ação alvo ('fugir', 'atacar e desviar', 'pegar powerUp', 'andar e quebrar blocos')
-    - perigo, oportunidade, neutro: indicadores binários (0/1)
-    - player_index: qual jogador é o player (1 a 4)
-    - limite_distancia: limite máximo de distância para jogadores e bombas
-    - limite_powerup: limite máximo de distância para power-up
-    - bomba_existe: se haverá bomba(s) no mapa
-    - bomba_player: se o player lançou alguma bomba
+
+    ```
+    Bombas respeitam a distância dos jogadores. Se bomba_player=1, o player terá bomba próxima.
     """
 
     if player_index not in [1, 2, 3, 4]:
@@ -87,11 +77,18 @@ def gerar_dados_treinamento(
 
         mais_de_um_jogador_perto = 1 if jogadores_perto > 1 else 0
 
-        # --- DISTÂNCIAS ALEATÓRIAS PARA BOMBAS ---
+        # --- DISTÂNCIAS ALEATÓRIAS PARA BOMBAS (respeitando distâncias dos jogadores) ---
         dist_bombas = {}
         if bomba_existe:
             for i in range(1, 5):
-                dist_bombas[i] = random.randint(1, limite_distancia)
+                if i == player_index and bomba_player:
+                    # Bomba do player próxima
+                    dist_bombas[i] = random.randint(1, min(3, limite_distancia))
+                else:
+                    # Bomba próxima à distância do jogador correspondente
+                    dist_jog = dist_jogadores[i]
+                    # Mantendo a bomba em torno da distância do jogador ±2
+                    dist_bombas[i] = max(1, min(dist_jog + random.randint(-2, 2), limite_distancia*2))
         else:
             for i in range(1, 5):
                 dist_bombas[i] = 0
@@ -105,34 +102,28 @@ def gerar_dados_treinamento(
 
         # --- MONTA LINHA DO DATASET ---
         linha = {
-            # Distâncias dos jogadores
             "dist_jogador1": dist_jogadores[1],
             "dist_jogador2": dist_jogadores[2],
             "dist_jogador3": dist_jogadores[3],
             "dist_jogador4": dist_jogadores[4],
 
-            # Distâncias das bombas
             "dist_bomba1": dist_bombas[1],
             "dist_bomba2": dist_bombas[2],
             "dist_bomba3": dist_bombas[3],
             "dist_bomba4": dist_bombas[4],
 
-            # Bomba do player
             "bomba_player": bomba_player,
             "bomba_existe": bomba_existe,
 
-            # PowerUp
             "powerup_existe": powerup_existe,
             "dist_powerup": dist_powerup,
             "player_com_powerup": player_com_powerup,
 
-            # Perigo e situação
             "perigo": perigo,
             "mais_de_um_jogador_perto": mais_de_um_jogador_perto,
             "oportunidade": oportunidade,
             "neutro": neutro,
 
-            # Ação alvo
             "funcao": funcao
         }
 
@@ -142,6 +133,7 @@ def gerar_dados_treinamento(
     print(f"\n--- Dados de treinamento gerados ({qtd_exemplos} exemplos | Player: {player_index}) ---\n")
     print(df.to_string(index=False))
     return df
+
 
 
 
@@ -260,10 +252,10 @@ gerar_dados_treinamento(
     oportunidade=0,
     neutro=0,
     player_index=1,
-    limite_distancia=12,
+    limite_distancia=5,
     limite_powerup=12,
     bomba_existe=1,
-    bomba_player=1)
+    bomba_player=0)
     
     
     
