@@ -11,12 +11,274 @@ sequenciaDeAcoes = []
 ACOES = ["bomba", "atacar, fugir, afastar, aproximar, pegar"]
 DIRECAO = ["cima", "baixo", "esquerda", "direita", "parado"]
 def decidir_acao(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_info, self_state):
-    exibir_estado_jogo(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_info, self_state)
+    
     
     return random.choice(ACOES)
 
 
 
+
+
+def arvoreDeDecisoes(TrainningData):
+    X_treino = TrainningData.iloc[:, :-1]
+    Y_treino = TrainningData.iloc[:, -1]
+    
+    model = DecisionTreeClassifier()
+    
+    model.fit(X_treino, Y_treino)
+    
+    return model
+
+def arvorePredict(realData):
+    TrainningData = gerar_dados_treinamento(50)
+    model = arvoreDeDecisoes(TrainningData)
+    result = model.predict(realData)
+    print("\n\n arvorePredict \n\n")
+    print(result)
+
+
+
+import random
+import pandas as pd
+
+def gerar_dados_treinamento(
+    qtd_exemplos=30,
+    funcao="fugir",
+    perigo=1,
+    oportunidade=0,
+    neutro=0,
+    player_index=1,
+    limite_distancia=5,
+    limite_powerup=12,
+    bomba_existe=1,
+    bomba_player=1
+):
+    """
+    Gera dados sintéticos controlados apenas com distâncias, para treinar IA.
+    
+    Parâmetros:
+    - qtd_exemplos: quantidade de exemplos a gerar
+    - funcao: ação alvo ('fugir', 'atacar e desviar', 'pegar powerUp', 'andar e quebrar blocos')
+    - perigo, oportunidade, neutro: indicadores binários (0/1)
+    - player_index: qual jogador é o player (1 a 4)
+    - limite_distancia: limite máximo de distância para jogadores e bombas
+    - limite_powerup: limite máximo de distância para power-up
+    - bomba_existe: se haverá bomba(s) no mapa
+    - bomba_player: se o player lançou alguma bomba
+    """
+
+    if player_index not in [1, 2, 3, 4]:
+        raise ValueError("player_index deve ser um número entre 1 e 4.")
+
+    dados = []
+
+    for _ in range(qtd_exemplos):
+        # --- DISTÂNCIAS ALEATÓRIAS PARA OS JOGADORES ---
+        dist_jogadores = {}
+        jogadores_perto = 0
+        for i in range(1, 5):
+            if i == player_index:
+                dist_jogadores[i] = 0
+                continue
+            dist = random.randint(1, limite_distancia) if perigo else random.randint(limite_distancia+1, limite_distancia*2)
+            dist_jogadores[i] = dist
+            if dist <= limite_distancia:
+                jogadores_perto += 1
+
+        mais_de_um_jogador_perto = 1 if jogadores_perto > 1 else 0
+
+        # --- DISTÂNCIAS ALEATÓRIAS PARA BOMBAS ---
+        dist_bombas = {}
+        if bomba_existe:
+            for i in range(1, 5):
+                dist_bombas[i] = random.randint(1, limite_distancia)
+        else:
+            for i in range(1, 5):
+                dist_bombas[i] = 0
+
+        # --- POWER UP ---
+        powerup_existe = random.choice([0, 1])
+        dist_powerup = random.randint(1, limite_powerup) if powerup_existe else 0
+
+        # --- PLAYER COM POWERUP ATIVO? ---
+        player_com_powerup = random.choice([0, 1])
+
+        # --- MONTA LINHA DO DATASET ---
+        linha = {
+            # Distâncias dos jogadores
+            "dist_jogador1": dist_jogadores[1],
+            "dist_jogador2": dist_jogadores[2],
+            "dist_jogador3": dist_jogadores[3],
+            "dist_jogador4": dist_jogadores[4],
+
+            # Distâncias das bombas
+            "dist_bomba1": dist_bombas[1],
+            "dist_bomba2": dist_bombas[2],
+            "dist_bomba3": dist_bombas[3],
+            "dist_bomba4": dist_bombas[4],
+
+            # Bomba do player
+            "bomba_player": bomba_player,
+            "bomba_existe": bomba_existe,
+
+            # PowerUp
+            "powerup_existe": powerup_existe,
+            "dist_powerup": dist_powerup,
+            "player_com_powerup": player_com_powerup,
+
+            # Perigo e situação
+            "perigo": perigo,
+            "mais_de_um_jogador_perto": mais_de_um_jogador_perto,
+            "oportunidade": oportunidade,
+            "neutro": neutro,
+
+            # Ação alvo
+            "funcao": funcao
+        }
+
+        dados.append(linha)
+
+    df = pd.DataFrame(dados)
+    print(f"\n--- Dados de treinamento gerados ({qtd_exemplos} exemplos | Player: {player_index}) ---\n")
+    print(df.to_string(index=False))
+    return df
+
+
+
+
+
+
+def gerar_dado_real(qtd_exemplos=1):
+    dados = []
+
+    for _ in range(qtd_exemplos):
+        # Posições no mapa (13x11)
+        player_x, player_y = random.randint(0, 12), random.randint(0, 10)
+        inimigo_x, inimigo_y = random.randint(0, 12), random.randint(0, 10)
+        bomba_x, bomba_y = random.randint(0, 12), random.randint(0, 10)
+
+        # Distâncias
+        distancia_inimigo = round(math.dist([player_x, player_y], [inimigo_x, inimigo_y]), 2)
+        distancia_bomba = round(math.dist([player_x, player_y], [bomba_x, bomba_y]), 2)
+
+        # Outros fatores do ambiente
+        num_bombas_ativas = random.randint(0, 5)
+        tempo_restante = random.randint(0, 300)
+        pontos = random.randint(0, 1000)
+        hud_info = random.randint(0, 3)
+        self_state = random.randint(0, 5)
+
+
+        # Monta uma linha
+        dados.append({
+            "player_x": player_x,
+            "player_y": player_y,
+            "inimigo_x": inimigo_x,
+            "inimigo_y": inimigo_y,
+            "bomba_x": bomba_x,
+            "bomba_y": bomba_y,
+            "distancia_inimigo": distancia_inimigo,
+            "distancia_bomba": distancia_bomba,
+            "num_bombas_ativas": num_bombas_ativas,
+            "tempo_restante": tempo_restante,
+            "pontos": pontos,
+            "hud_info": hud_info,
+            "self_state": self_state
+        })
+    dataframe = pd.DataFrame(dados)
+    print("\n\ngerar_Dado_Real \n\n")
+    print(dataframe)
+    return dataframe
+    
+# dadoReal = gerar_dado_real()
+
+# arvorePredict(dadoReal)
+
+def exibir_estado_jogo(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_info, self_state):
+    print("===== ESTADO ATUAL DO JOGO =====\n")
+
+    # Player
+    print("🧍 Player:")
+    if hasattr(player, '__dict__'):
+        for k, v in player.__dict__.items():
+            print(f"  {k}: {v}")
+    else:
+        print(f"  {player}")
+
+    # Mapa
+    print("\n🗺️ Mapa:")
+    for linha in mapa:
+        print(" ", linha)
+
+    # Jogadores
+    print("\n👥 Jogadores:")
+    for i, j in enumerate(jogadores):
+        print(f"  Jogador {i + 1}:")
+        if hasattr(j, '__dict__'):
+            for k, v in j.__dict__.items():
+                print(f"    {k}: {v}")
+        else:
+            print(f"    {j}")
+
+    # Bombas
+    print("\n💣 Bombas:")
+    for i, b in enumerate(bombas):
+        print(f"  Bomba {i + 1}:")
+        if hasattr(b, '__dict__'):
+            for k, v in b.__dict__.items():
+                print(f"    {k}: {v}")
+        else:
+            print(f"    {b}")
+
+    # Tempo restante
+    print(f"\n⏱️ Tempo restante: {tempo_restante:.3f}")
+
+    # Pontos
+    print(f"\n⭐ Pontos: {pontos}")
+
+    # HUD info
+    print("\n🧭 HUD info:")
+    for k, v in hud_info.items():
+        print(f"  {k}: {v}")
+
+    # Self state
+    print("\n🧩 Self state:")
+    for k, v in self_state.items():
+        print(f"  {k}: {v}")
+
+    print("\n================================\n")
+    
+    
+def distancia_manhattan(x1, y1, x2, y2):
+    return abs(x1 - x2) + abs(y1 - y2)
+
+    
+gerar_dados_treinamento(
+    qtd_exemplos=30,
+    funcao="fugir",
+    perigo=1,
+    oportunidade=0,
+    neutro=0,
+    player_index=1,
+    limite_distancia=12,
+    limite_powerup=12,
+    bomba_existe=1,
+    bomba_player=1)
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 # Parâmetros de jogo
 # TILE_SIZE = 48
 # ROWS, COLS = 11, 13
@@ -84,170 +346,3 @@ def decidir_acao(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_in
 
 
 
-
-
-def arvoreDeDecisoes(TrainningData):
-    X_treino = TrainningData.iloc[:, :-1]
-    Y_treino = TrainningData.iloc[:, -1]
-    
-    model = DecisionTreeClassifier()
-    
-    model.fit(X_treino, Y_treino)
-    
-    return model
-
-def arvorePredict(realData):
-    TrainningData = gerar_dados_treinamento(50)
-    model = arvoreDeDecisoes(TrainningData)
-    result = model.predict(realData)
-    print("\n\n arvorePredict \n\n")
-    print(result)
-    
-
-
-def gerar_dados_treinamento(qtd_exemplos=30):
-    dados = []
-
-    for _ in range(qtd_exemplos):
-        # Posições no mapa (13x11)
-        player_x, player_y = random.randint(0, 12), random.randint(0, 10)
-        inimigo_x, inimigo_y = random.randint(0, 12), random.randint(0, 10)
-        bomba_x, bomba_y = random.randint(0, 12), random.randint(0, 10)
-
-        # Distâncias
-        distancia_inimigo = round(math.dist([player_x, player_y], [inimigo_x, inimigo_y]), 2)
-        distancia_bomba = round(math.dist([player_x, player_y], [bomba_x, bomba_y]), 2)
-
-        # Outros fatores do ambiente
-        num_bombas_ativas = random.randint(0, 5)
-        tempo_restante = random.randint(0, 300)
-        pontos = random.randint(0, 1000)
-        hud_info = random.randint(0, 3)
-        self_state = random.randint(0, 5)
-
-        # Ações possíveis (por enquanto só como rótulos de exemplo)
-        funcao = random.choice(["atacar", "fugir", "pegar_item", "quebrarBloco", "aproximar"])
-
-        # Monta uma linha
-        dados.append({
-            "player_x": player_x,
-            "player_y": player_y,
-            "inimigo_x": inimigo_x,
-            "inimigo_y": inimigo_y,
-            "bomba_x": bomba_x,
-            "bomba_y": bomba_y,
-            "distancia_inimigo": distancia_inimigo,
-            "distancia_bomba": distancia_bomba,
-            "num_bombas_ativas": num_bombas_ativas,
-            "tempo_restante": tempo_restante,
-            "pontos": pontos,
-            "hud_info": hud_info,
-            "self_state": self_state,
-            "funcao": funcao
-        })
-
-    dataframe = pd.DataFrame(dados)
-    print("\n\ngerar_Dado_Treinamento \n\n")
-    print(dataframe)
-    return dataframe
-
-
-def gerar_dado_real(qtd_exemplos=1):
-    dados = []
-
-    for _ in range(qtd_exemplos):
-        # Posições no mapa (13x11)
-        player_x, player_y = random.randint(0, 12), random.randint(0, 10)
-        inimigo_x, inimigo_y = random.randint(0, 12), random.randint(0, 10)
-        bomba_x, bomba_y = random.randint(0, 12), random.randint(0, 10)
-
-        # Distâncias
-        distancia_inimigo = round(math.dist([player_x, player_y], [inimigo_x, inimigo_y]), 2)
-        distancia_bomba = round(math.dist([player_x, player_y], [bomba_x, bomba_y]), 2)
-
-        # Outros fatores do ambiente
-        num_bombas_ativas = random.randint(0, 5)
-        tempo_restante = random.randint(0, 300)
-        pontos = random.randint(0, 1000)
-        hud_info = random.randint(0, 3)
-        self_state = random.randint(0, 5)
-
-
-        # Monta uma linha
-        dados.append({
-            "player_x": player_x,
-            "player_y": player_y,
-            "inimigo_x": inimigo_x,
-            "inimigo_y": inimigo_y,
-            "bomba_x": bomba_x,
-            "bomba_y": bomba_y,
-            "distancia_inimigo": distancia_inimigo,
-            "distancia_bomba": distancia_bomba,
-            "num_bombas_ativas": num_bombas_ativas,
-            "tempo_restante": tempo_restante,
-            "pontos": pontos,
-            "hud_info": hud_info,
-            "self_state": self_state
-        })
-    dataframe = pd.DataFrame(dados)
-    print("\n\ngerar_Dado_Real \n\n")
-    print(dataframe)
-    return dataframe
-    
-dadoReal = gerar_dado_real()
-
-arvorePredict(dadoReal)
-
-def exibir_estado_jogo(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_info, self_state):
-    print("===== ESTADO ATUAL DO JOGO =====\n")
-
-    # Player
-    print("🧍 Player:")
-    if hasattr(player, '__dict__'):
-        for k, v in player.__dict__.items():
-            print(f"  {k}: {v}")
-    else:
-        print(f"  {player}")
-
-    # Mapa
-    print("\n🗺️ Mapa:")
-    for linha in mapa:
-        print(" ", linha)
-
-    # Jogadores
-    print("\n👥 Jogadores:")
-    for i, j in enumerate(jogadores):
-        print(f"  Jogador {i + 1}:")
-        if hasattr(j, '__dict__'):
-            for k, v in j.__dict__.items():
-                print(f"    {k}: {v}")
-        else:
-            print(f"    {j}")
-
-    # Bombas
-    print("\n💣 Bombas:")
-    for i, b in enumerate(bombas):
-        print(f"  Bomba {i + 1}:")
-        if hasattr(b, '__dict__'):
-            for k, v in b.__dict__.items():
-                print(f"    {k}: {v}")
-        else:
-            print(f"    {b}")
-
-    # Tempo restante
-    print(f"\n⏱️ Tempo restante: {tempo_restante:.3f}")
-
-    # Pontos
-    print(f"\n⭐ Pontos: {pontos}")
-
-    # HUD info
-    print("\n🧭 HUD info:")
-    for k, v in hud_info.items():
-        print(f"  {k}: {v}")
-
-    # Self state
-    print("\n🧩 Self state:")
-    for k, v in self_state.items():
-        print(f"  {k}: {v}")
-
-    print("\n================================\n")
