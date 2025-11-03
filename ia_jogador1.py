@@ -38,6 +38,7 @@ def arvorePredict(realData):
 
 
 
+
 def gerar_dados_treinamento(
 qtd_exemplos=30,
 funcao="fugir",
@@ -50,89 +51,97 @@ limite_powerup=12,
 bomba_existe=1,
 bomba_player=1
 ):
-    """
-    Gera dados sintéticos controlados apenas com distâncias, para treinar IA.
+  """
+  Gera dados sintéticos controlados apenas com distâncias, para treinar IA.
 
-    ```
-    Bombas respeitam a distância dos jogadores. Se bomba_player=1, o player terá bomba próxima.
-    """
+  ```
+  Bombas respeitam a distância dos jogadores. Se bomba_player=1, o player terá bomba próxima.
+  Se a distância do jogador for 0 e bomba_player=0, a bomba correspondente é 0.
+  """
 
-    if player_index not in [1, 2, 3, 4]:
-        raise ValueError("player_index deve ser um número entre 1 e 4.")
+  if player_index not in [1, 2, 3, 4]:
+      raise ValueError("player_index deve ser um número entre 1 e 4.")
 
-    dados = []
+  dados = []
 
-    for _ in range(qtd_exemplos):
-        # --- DISTÂNCIAS ALEATÓRIAS PARA OS JOGADORES ---
-        dist_jogadores = {}
-        jogadores_perto = 0
-        for i in range(1, 5):
-            if i == player_index:
-                dist_jogadores[i] = 0
-                continue
-            dist = random.randint(1, limite_distancia) if perigo else random.randint(limite_distancia+1, limite_distancia*2)
-            dist_jogadores[i] = dist
-            if dist <= limite_distancia:
-                jogadores_perto += 1
+  for _ in range(qtd_exemplos):
+      # --- DISTÂNCIAS ALEATÓRIAS PARA OS JOGADORES ---
+      dist_jogadores = {}
+      jogadores_perto = 0
+      for i in range(1, 5):
+          if i == player_index:
+              dist_jogadores[i] = 0
+              continue
+          dist = random.randint(1, limite_distancia) if perigo else random.randint(limite_distancia+1, limite_distancia*2)
+          dist_jogadores[i] = dist
+          if dist <= limite_distancia:
+              jogadores_perto += 1
 
-        mais_de_um_jogador_perto = 1 if jogadores_perto > 1 else 0
+      mais_de_um_jogador_perto = 1 if jogadores_perto > 1 else 0
 
-        # --- DISTÂNCIAS ALEATÓRIAS PARA BOMBAS (respeitando distâncias dos jogadores) ---
-        dist_bombas = {}
-        if bomba_existe:
-            for i in range(1, 5):
-                if i == player_index and bomba_player:
-                    # Bomba do player próxima
-                    dist_bombas[i] = random.randint(1, min(3, limite_distancia))
-                else:
-                    # Bomba próxima à distância do jogador correspondente
-                    dist_jog = dist_jogadores[i]
-                    # Mantendo a bomba em torno da distância do jogador ±2
-                    dist_bombas[i] = max(1, min(dist_jog + random.randint(-2, 2), limite_distancia*2))
-        else:
-            for i in range(1, 5):
-                dist_bombas[i] = 0
+      # --- DISTÂNCIAS ALEATÓRIAS PARA BOMBAS (respeitando distâncias dos jogadores) ---
+      dist_bombas = {}
+      if bomba_existe:
+          for i in range(1, 5):
+              if i == player_index:
+                  if bomba_player == 1:
+                      # Player com bomba ativa → gera bomba próxima
+                      dist_bombas[i] = random.randint(1, min(3, limite_distancia))
+                  else:
+                      # Player sem bomba ativa → bomba não existe
+                      dist_bombas[i] = 0
+              else:
+                  # Para os outros jogadores, bomba próxima à distância deles ±2
+                  dist_jog = dist_jogadores[i]
+                  dist_bombas[i] = max(1, min(dist_jog + random.randint(-2, 2), limite_distancia*2))
+      else:
+          for i in range(1, 5):
+              dist_bombas[i] = 0
 
-        # --- POWER UP ---
-        powerup_existe = random.choice([0, 1])
-        dist_powerup = random.randint(1, limite_powerup) if powerup_existe else 0
+      # --- POWER UP ---
+      powerup_existe = random.choice([0, 1])
+      dist_powerup = random.randint(1, limite_powerup) if powerup_existe else 0
 
-        # --- PLAYER COM POWERUP ATIVO? ---
-        player_com_powerup = random.choice([0, 1])
+      # --- PLAYER COM POWERUP ATIVO? ---
+      player_com_powerup = random.choice([0, 1])
 
-        # --- MONTA LINHA DO DATASET ---
-        linha = {
-            "dist_jogador1": dist_jogadores[1],
-            "dist_jogador2": dist_jogadores[2],
-            "dist_jogador3": dist_jogadores[3],
-            "dist_jogador4": dist_jogadores[4],
+      # --- MONTA LINHA DO DATASET ---
+      linha = {
+          "dist_jogador1": dist_jogadores[1],
+          "dist_jogador2": dist_jogadores[2],
+          "dist_jogador3": dist_jogadores[3],
+          "dist_jogador4": dist_jogadores[4],
 
-            "dist_bomba1": dist_bombas[1],
-            "dist_bomba2": dist_bombas[2],
-            "dist_bomba3": dist_bombas[3],
-            "dist_bomba4": dist_bombas[4],
+          "dist_bomba1": dist_bombas[1],
+          "dist_bomba2": dist_bombas[2],
+          "dist_bomba3": dist_bombas[3],
+          "dist_bomba4": dist_bombas[4],
 
-            "bomba_player": bomba_player,
-            "bomba_existe": bomba_existe,
+          "bomba_player": bomba_player,
+          "bomba_existe": bomba_existe,
 
-            "powerup_existe": powerup_existe,
-            "dist_powerup": dist_powerup,
-            "player_com_powerup": player_com_powerup,
+          "powerup_existe": powerup_existe,
+          "dist_powerup": dist_powerup,
+          "player_com_powerup": player_com_powerup,
 
-            "perigo": perigo,
-            "mais_de_um_jogador_perto": mais_de_um_jogador_perto,
-            "oportunidade": oportunidade,
-            "neutro": neutro,
+          "perigo": perigo,
+          "mais_de_um_jogador_perto": mais_de_um_jogador_perto,
+          "oportunidade": oportunidade,
+          "neutro": neutro,
 
-            "funcao": funcao
-        }
+          "funcao": funcao
+      }
 
-        dados.append(linha)
+      dados.append(linha)
 
-    df = pd.DataFrame(dados)
-    print(f"\n--- Dados de treinamento gerados ({qtd_exemplos} exemplos | Player: {player_index}) ---\n")
-    print(df.to_string(index=False))
-    return df
+  df = pd.DataFrame(dados)
+  print(f"\n--- Dados de treinamento gerados ({qtd_exemplos} exemplos | Player: {player_index}) ---\n")
+  print(df.to_string(index=False))
+  return df
+
+
+    
+
 
 
 
