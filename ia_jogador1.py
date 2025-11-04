@@ -15,7 +15,11 @@ def decidir_acao(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_in
     
     return random.choice(ACOES)
 
+# calculo de distancias
 
+def calcular_distancia(pos1, pos2):
+  return math.sqrt((pos1[0]-pos2[0]))
+  
 
 # Parâmetros de jogo
 # TILE_SIZE = 48
@@ -80,10 +84,60 @@ def decidir_acao(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_in
 # def atacarJogador():
 # def
 
+# Nó de decisão
 
+def decidir_acao(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_info, self_state):
+    # Gera um contexto real
+    dado_real = gerar_dado_real()
+    
+    # Faz o modelo prever a ação
+    
+    TrainningData = gerar_dados_treinamento(100)
+    model = arvoreDeDecisoes(TrainningData)
+    acao_prevista = model.predict(dado_real)[0]
 
+    print(f"Ação prevista pela IA: {acao_prevista}")
 
+    # Executa a ação prevista
+    
+    direcao = executar_acao(acao_prevista, player, mapa, jogadores, bombas)
+    return direcao
 
+def fugir(player, mapa, jogadores, bombas):
+    print("fugindo do perigo")
+    return random.choice(DIRECAO)
+
+def atacar(player, mapa, jogadores):
+    print("atacando jogador")
+    return random.choice(DIRECAO)
+
+def buscar_powerUp(player, mapa):
+    print("procurando power-up")
+    return random.choice(DIRECAO)
+
+def quebrar_parede(player, mapa):
+    print("quebrando parede")
+    return random.choice(DIRECAO)
+
+def aproximar(player, mapa, jogadores):
+    print("aproximando do inimigo")
+    return random.choice(DIRECAO)
+
+#executar ação 
+
+def executar_acao(acao, player, mapa, jogadores, bombas):
+    if acao == "fugir":
+        return fugir(player, mapa, jogadores, bombas)
+    elif acao == "atacar":
+        return atacar(player, mapa, jogadores)
+    elif acao == "pegar_item":
+        return buscar_powerUp(player, mapa)
+    elif acao == "quebrarBloco":
+        return quebrar_parede(player, mapa)
+    elif acao == "aproximar":
+        return aproximar(player, mapa, jogadores)
+    else:
+        return "parado"
 
 
 def arvoreDeDecisoes(TrainningData):
@@ -103,7 +157,7 @@ def arvorePredict(realData):
     print("\n\n arvorePredict \n\n")
     print(result)
     
-
+#dados de treinamento
 
 def gerar_dados_treinamento(qtd_exemplos=30):
     dados = []
