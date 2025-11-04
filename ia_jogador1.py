@@ -8,17 +8,13 @@ import json
 indice_sequenciaDeAcoes = 0
 sequenciaDeAcoes = []
 
-ACOES = ["bomba", "atacar, fugir, afastar, aproximar, pegar"]
+ACOES = ["bomba", "atacar", "fugir", "afastar", "aproximar", "pegar"]
 DIRECAO = ["cima", "baixo", "esquerda", "direita", "parado"]
-def decidir_acao(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_info, self_state):
-    exibir_estado_jogo(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_info, self_state)
-    
-    return random.choice(ACOES)
 
 # calculo de distancias
 
 def calcular_distancia(pos1, pos2):
-  return math.sqrt((pos1[0]-pos2[0]))
+    return math.sqrt((pos1[0]-pos2[0])**2 + (pos1[1]-pos2[1])**2)
   
 
 # Parâmetros de jogo
@@ -94,7 +90,11 @@ def decidir_acao(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_in
     
     TrainningData = gerar_dados_treinamento(100)
     model = arvoreDeDecisoes(TrainningData)
-    acao_prevista = model.predict(dado_real)[0]
+    
+    # Correção: usar apenas as colunas de treino sem a coluna de rótulo
+    X_real = dado_real[TrainningData.columns[:-1]]
+    
+    acao_prevista = model.predict(X_real)[0]
 
     print(f"Ação prevista pela IA: {acao_prevista}")
 
@@ -153,7 +153,11 @@ def arvoreDeDecisoes(TrainningData):
 def arvorePredict(realData):
     TrainningData = gerar_dados_treinamento(50)
     model = arvoreDeDecisoes(TrainningData)
-    result = model.predict(realData)
+    
+    # Correção: usar apenas as colunas de treino sem a coluna de rótulo
+    X_real = realData[TrainningData.columns[:-1]]
+    
+    result = model.predict(X_real)
     print("\n\n arvorePredict \n\n")
     print(result)
     
@@ -288,7 +292,7 @@ def exibir_estado_jogo(player, mapa, jogadores, bombas, tempo_restante, pontos, 
         else:
             print(f"    {b}")
 
-    # Tempo restante
+    # Tempo restante  
     print(f"\n⏱️ Tempo restante: {tempo_restante:.3f}")
 
     # Pontos
