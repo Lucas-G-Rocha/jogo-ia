@@ -3896,47 +3896,63 @@ def passear_pelo_mapa(player, mapa, jogadores, bombas):
     largura = len(mapa[0])
     altura = len(mapa)
 
+    # -------------------------------------------------------------
+    # Funções auxiliares
     def pos_valida(px, py):
         return 0 <= px < largura and 0 <= py < altura and mapa[py][px] == 0
 
+    def mover_para(origem, destino):
+        ox, oy = origem
+        dx, dy = destino
+        if dx > ox: return "direita"
+        if dx < ox: return "esquerda"
+        if dy > oy: return "baixo"
+        if dy < oy: return "cima"
+        return "parado"
+
     # -------------------------------------------------------------
-    # 1️⃣ Calcular zonas de perigo com base nas bombas ativas
+    # 1️⃣ Calcular zonas de perigo com base nas bombas
     zonas_perigo = set()
-    alcance_bomba = player["bomba_nivel"] + 2  # ajuste conforme seu jogo
     for bomba in bombas:
         bx, by = bomba["pos"]
+        alcance = bomba.get("alcance", player["bomba_nivel"] + 2)
         zonas_perigo.add((bx, by))
-        # propagar explosão nas 4 direções
         for dx, dy in [(1,0),(-1,0),(0,1),(0,-1)]:
-            for i in range(1, alcance_bomba+1):
+            for i in range(1, alcance+1):
                 nx, ny = bx + dx*i, by + dy*i
                 if not (0 <= nx < largura and 0 <= ny < altura):
                     break
-                if mapa[ny][nx] == 2:  # bloco indestrutível
+                if mapa[ny][nx] == 2:  # parede indestrutível bloqueia explosão
                     break
                 zonas_perigo.add((nx, ny))
                 if mapa[ny][nx] == 1:  # para em bloco quebrável
                     break
 
     # -------------------------------------------------------------
-    # 2️⃣ Se estiver em perigo, buscar caminho até posição segura
+    # 2️⃣ Se estiver em perigo → fugir
     if (x, y) in zonas_perigo:
-        destino = achar_posicao_segura(mapa, zonas_perigo, (x, y))
-        if destino:
-            return mover_para((x, y), destino)
+        destino_seguro = achar_posicao_segura(mapa, zonas_perigo, (x, y))
+        if destino_seguro:
+            return mover_para((x, y), destino_seguro)
         else:
-            return "parado"  # sem saída :(
+            return "parado"
 
     # -------------------------------------------------------------
-    # 3️⃣ Se não estiver em perigo, checar blocos quebráveis próximos
-    for dx, dy, acao in [(0, -1, "cima"), (0, 1, "baixo"), (-1, 0, "esquerda"), (1, 0, "direita")]:
+    # 3️⃣ Se tiver bloco quebrável adjacente → soltar bomba
+    for dx, dy in [(0, -1), (0, 1), (-1, 0), (1, 0)]:
         nx, ny = x + dx, y + dy
         if 0 <= nx < largura and 0 <= ny < altura:
             if mapa[ny][nx] == 1 and player["bombas_ativas"] < player["max_bombas"]:
                 return "bomba"
 
     # -------------------------------------------------------------
-    # 4️⃣ Explorar — andar em direção aleatória segura
+    # 4️⃣ Procurar bloco quebrável mais próximo (via BFS)
+    alvo = achar_bloco_quebravel_mais_proximo(mapa, (x, y), zonas_perigo)
+    if alvo:
+        return mover_para((x, y), alvo)
+
+    # -------------------------------------------------------------
+    # 5️⃣ Se não houver blocos → andar aleatoriamente em zona segura
     direcoes = [("cima", (0, -1)), ("baixo", (0, 1)), ("esquerda", (-1, 0)), ("direita", (1, 0))]
     random.shuffle(direcoes)
     for nome, (dx, dy) in direcoes:
@@ -3944,12 +3960,11 @@ def passear_pelo_mapa(player, mapa, jogadores, bombas):
         if pos_valida(nx, ny) and (nx, ny) not in zonas_perigo:
             return nome
 
-    # nada possível → parado
     return "parado"
 
 
 def achar_posicao_segura(mapa, zonas_perigo, origem):
-    """BFS simples pra achar o caminho mais curto até posição segura."""
+    """Busca a posição segura mais próxima (fora da área de explosão)."""
     largura = len(mapa[0])
     altura = len(mapa)
     fila = deque([origem])
@@ -3959,29 +3974,48 @@ def achar_posicao_segura(mapa, zonas_perigo, origem):
     while fila:
         x, y = fila.popleft()
         if (x, y) not in zonas_perigo and mapa[y][x] == 0:
-            # achou posição segura
-            while pais[(x, y)] != origem:
+            # Achou posição segura — retorna o primeiro passo
+            while pais[(x, y)] != origem and pais[(x, y)] is not None:
                 x, y = pais[(x, y)]
             return (x, y)
         for dx, dy in [(0,1),(0,-1),(1,0),(-1,0)]:
             nx, ny = x + dx, y + dy
             if 0 <= nx < largura and 0 <= ny < altura and (nx, ny) not in visitados:
-                if mapa[ny][nx] == 0:  # só caminho livre
+                if mapa[ny][nx] == 0:
                     visitados.add((nx, ny))
                     pais[(nx, ny)] = (x, y)
                     fila.append((nx, ny))
-    return None  # sem posição segura
+    return None
 
 
-def mover_para(origem, destino):
-    """Retorna a direção cardinal para dar o primeiro passo até o destino."""
-    x, y = origem
-    nx, ny = destino
-    if nx > x: return "direita"
-    if nx < x: return "esquerda"
-    if ny > y: return "baixo"
-    if ny < y: return "cima"
-    return "parado"
+def achar_bloco_quebravel_mais_proximo(mapa, origem, zonas_perigo):
+    """Procura o bloco quebrável mais próximo e retorna a primeira direção pra chegar até ele."""
+    largura = len(mapa[0])
+    altura = len(mapa)
+    fila = deque([origem])
+    visitados = {origem}
+    pais = {origem: None}
+
+    while fila:
+        x, y = fila.popleft()
+        # se há bloco quebrável adjacente, encontramos o destino final
+        for dx, dy in [(1,0),(-1,0),(0,1),(0,-1)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < largura and 0 <= ny < altura:
+                if mapa[ny][nx] == 1 and (x, y) not in zonas_perigo:
+                    # sobe até o primeiro passo
+                    while pais[(x, y)] != origem and pais[(x, y)] is not None:
+                        x, y = pais[(x, y)]
+                    return (x, y)
+        # expandir busca
+        for dx, dy in [(1,0),(-1,0),(0,1),(0,-1)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < largura and 0 <= ny < altura and (nx, ny) not in visitados:
+                if mapa[ny][nx] == 0 and (nx, ny) not in zonas_perigo:
+                    visitados.add((nx, ny))
+                    pais[(nx, ny)] = (x, y)
+                    fila.append((nx, ny))
+    return None
 
 
 def extrair_informacoes(player, mapa, jogadores, bombas):
