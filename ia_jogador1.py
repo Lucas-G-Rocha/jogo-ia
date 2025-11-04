@@ -4,7 +4,7 @@ import pandas as pd;
 import math
 import json
 import pprint;
-
+from collections import deque
 
 indice_sequenciaDeAcoes = 0
 sequenciaDeAcoes = []
@@ -3888,8 +3888,101 @@ def atacar_e_desviar():
     return 'bomba'
 def pegar_powerUp():
     return 'baixo'
-def passear_pelo_mapa():
-    return 'direita'
+
+
+def passear_pelo_mapa(player, mapa, jogadores, bombas):
+    pos = player["pos"]
+    x, y = pos
+    largura = len(mapa[0])
+    altura = len(mapa)
+
+    def pos_valida(px, py):
+        return 0 <= px < largura and 0 <= py < altura and mapa[py][px] == 0
+
+    # -------------------------------------------------------------
+    # 1️⃣ Calcular zonas de perigo com base nas bombas ativas
+    zonas_perigo = set()
+    alcance_bomba = player["bomba_nivel"] + 2  # ajuste conforme seu jogo
+    for bomba in bombas:
+        bx, by = bomba["pos"]
+        zonas_perigo.add((bx, by))
+        # propagar explosão nas 4 direções
+        for dx, dy in [(1,0),(-1,0),(0,1),(0,-1)]:
+            for i in range(1, alcance_bomba+1):
+                nx, ny = bx + dx*i, by + dy*i
+                if not (0 <= nx < largura and 0 <= ny < altura):
+                    break
+                if mapa[ny][nx] == 2:  # bloco indestrutível
+                    break
+                zonas_perigo.add((nx, ny))
+                if mapa[ny][nx] == 1:  # para em bloco quebrável
+                    break
+
+    # -------------------------------------------------------------
+    # 2️⃣ Se estiver em perigo, buscar caminho até posição segura
+    if (x, y) in zonas_perigo:
+        destino = achar_posicao_segura(mapa, zonas_perigo, (x, y))
+        if destino:
+            return mover_para((x, y), destino)
+        else:
+            return "parado"  # sem saída :(
+
+    # -------------------------------------------------------------
+    # 3️⃣ Se não estiver em perigo, checar blocos quebráveis próximos
+    for dx, dy, acao in [(0, -1, "cima"), (0, 1, "baixo"), (-1, 0, "esquerda"), (1, 0, "direita")]:
+        nx, ny = x + dx, y + dy
+        if 0 <= nx < largura and 0 <= ny < altura:
+            if mapa[ny][nx] == 1 and player["bombas_ativas"] < player["max_bombas"]:
+                return "bomba"
+
+    # -------------------------------------------------------------
+    # 4️⃣ Explorar — andar em direção aleatória segura
+    direcoes = [("cima", (0, -1)), ("baixo", (0, 1)), ("esquerda", (-1, 0)), ("direita", (1, 0))]
+    random.shuffle(direcoes)
+    for nome, (dx, dy) in direcoes:
+        nx, ny = x + dx, y + dy
+        if pos_valida(nx, ny) and (nx, ny) not in zonas_perigo:
+            return nome
+
+    # nada possível → parado
+    return "parado"
+
+
+def achar_posicao_segura(mapa, zonas_perigo, origem):
+    """BFS simples pra achar o caminho mais curto até posição segura."""
+    largura = len(mapa[0])
+    altura = len(mapa)
+    fila = deque([origem])
+    visitados = {origem}
+    pais = {origem: None}
+
+    while fila:
+        x, y = fila.popleft()
+        if (x, y) not in zonas_perigo and mapa[y][x] == 0:
+            # achou posição segura
+            while pais[(x, y)] != origem:
+                x, y = pais[(x, y)]
+            return (x, y)
+        for dx, dy in [(0,1),(0,-1),(1,0),(-1,0)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < largura and 0 <= ny < altura and (nx, ny) not in visitados:
+                if mapa[ny][nx] == 0:  # só caminho livre
+                    visitados.add((nx, ny))
+                    pais[(nx, ny)] = (x, y)
+                    fila.append((nx, ny))
+    return None  # sem posição segura
+
+
+def mover_para(origem, destino):
+    """Retorna a direção cardinal para dar o primeiro passo até o destino."""
+    x, y = origem
+    nx, ny = destino
+    if nx > x: return "direita"
+    if nx < x: return "esquerda"
+    if ny > y: return "baixo"
+    if ny < y: return "cima"
+    return "parado"
+
 
 def extrair_informacoes(player, mapa, jogadores, bombas):
     """
@@ -4032,7 +4125,8 @@ def decidir_acao(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_in
     # print('\n\n estado de jogo \n\n')
     # print(estadoDeJogo)
     estado = extrair_informacoes(player, mapa, jogadores, bombas)
-
+    print('\n\n Extrair Informações\n')
+    print(estado)
     # Transforma o estado em dados estruturados para IA
     exemploDadoReal = transformar_dados(
         estado["player"],
@@ -4051,13 +4145,16 @@ def decidir_acao(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_in
     acao = result[0]
 
     if acao == 'atacar_e_desviar':
-        return atacar_e_desviar()
+        # return atacar_e_desviar()
+        return passear_pelo_mapa(estado["player"], mapa, estado["jogadores"], estado["bombas"])
     elif acao == 'fugir':
-        return fugir()
+        # return fugir()
+        return passear_pelo_mapa(estado["player"], mapa, estado["jogadores"], estado["bombas"])
     elif acao == 'pegar_powerUp':
-        return pegar_powerUp()
+        # return pegar_powerUp()
+        return passear_pelo_mapa(estado["player"], mapa, estado["jogadores"], estado["bombas"])
     elif acao == 'passear_pelo_mapa':
-        return passear_pelo_mapa()
+        # return passear_pelo_mapa()
+        return passear_pelo_mapa(estado["player"], mapa, estado["jogadores"], estado["bombas"])
     log_estado_jogo(player, jogadores, bombas, mapa)
     
-    return random.choice(DIRECAO)
