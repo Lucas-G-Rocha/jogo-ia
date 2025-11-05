@@ -552,7 +552,7 @@ while True:
                         if b.dono == p:
                             pontos[players.index(p)] -= PONTOS_MATAR_JOGADOR
                             if pontos[players.index(p)]<0:
-                                pontos[players.index(p)]=0;
+                                pontos[players.index(p)]=0
 
                         else:
                             pontos[players.index(b.dono)] += PONTOS_MATAR_JOGADOR
