@@ -312,8 +312,148 @@ def dados_treinamento_fixos():
 
 def fugir():
     return 'cima'
-def atacar_e_desviar():
-    return 'bomba'
+import random
+from collections import deque
+
+def atacar_e_desviar(player, mapa, jogadores, bombas, powerups):
+    """
+    Estratégia ofensiva inteligente: busca posições onde a bomba pode atingir o inimigo,
+    tenta alcançá-las, planta e recua, desviando de perigos.
+    """
+    from collections import deque
+    import random
+
+    x, y = player["pos"]
+    id_player = player["id"]
+    largura, altura = len(mapa[0]), len(mapa)
+    alcance_bomba = player.get("bomba_nivel", 2)
+
+    # === Funções auxiliares ===
+    def dentro(a, b): return 0 <= a < largura and 0 <= b < altura
+
+    def perigo(pos):
+        """Verifica se a posição está dentro da área de explosão de alguma bomba."""
+        px, py = pos
+        for b in bombas:
+            bx, by = b["pos"]
+            alcance = b.get("alcance", b.get("nivel", b.get("bomba_nivel", 2)))
+            if px == bx and abs(py - by) <= alcance:
+                return True
+            if py == by and abs(px - bx) <= alcance:
+                return True
+        return False
+
+    def vizinhos(a, b):
+        return [(a+1,b), (a-1,b), (a,b+1), (a,b-1)]
+
+    def direcao_para(orig, dest):
+        ox, oy = orig; dx, dy = dest
+        if dx > ox: return "direita"
+        if dx < ox: return "esquerda"
+        if dy > oy: return "baixo"
+        if dy < oy: return "cima"
+        return "parado"
+
+    def bfs(destinos, evitar_perigo=True):
+        fila = deque([(x, y, [])])
+        visitado = {(x, y)}
+        while fila:
+            cx, cy, caminho = fila.popleft()
+            if (cx, cy) in destinos:
+                return caminho + [(cx, cy)]
+            for nx, ny in vizinhos(cx, cy):
+                if dentro(nx, ny) and (nx, ny) not in visitado:
+                    if mapa[ny][nx] in [0, 3, 4, 2]:
+                        if not (evitar_perigo and perigo((nx, ny))):
+                            fila.append((nx, ny, caminho + [(cx, cy)]))
+                            visitado.add((nx, ny))
+        return []
+
+    # === 1️⃣ Evitar perigo imediato ===
+    if perigo((x, y)):
+        seguros = [p for p in vizinhos(x, y) if dentro(*p) and not perigo(p) and mapa[p[1]][p[0]] in [0, 3, 4]]
+        if seguros:
+            destino = random.choice(seguros)
+            return direcao_para((x, y), destino)
+        return "parado"
+
+    # === 2️⃣ Selecionar inimigo mais próximo ===
+    inimigos = [j for j in jogadores if j["ativo"] and j["id"] != id_player]
+    if not inimigos:
+        return "parado"
+    alvo = min(inimigos, key=lambda j: abs(j["pos"][0]-x) + abs(j["pos"][1]-y))
+    ax, ay = alvo["pos"]
+
+    # === 3️⃣ Calcular posições onde a bomba atingiria o inimigo ===
+    posicoes_ataque = []
+    # horizontal
+    if ay == y:
+        for dx in range(-alcance_bomba, alcance_bomba + 1):
+            tx = x + dx
+            if dentro(tx, y) and abs(tx - ax) <= alcance_bomba:
+                # sem obstáculo no caminho
+                livre = True
+                passo = 1 if ax > tx else -1
+                for i in range(tx, ax, passo):
+                    if mapa[y][i] not in [0, 3, 4]:
+                        livre = False
+                        break
+                if livre:
+                    posicoes_ataque.append((tx, y))
+    # vertical
+    if ax == x:
+        for dy in range(-alcance_bomba, alcance_bomba + 1):
+            ty = y + dy
+            if dentro(x, ty) and abs(ty - ay) <= alcance_bomba:
+                livre = True
+                passo = 1 if ay > ty else -1
+                for j in range(ty, ay, passo):
+                    if mapa[j][x] not in [0, 3, 4]:
+                        livre = False
+                        break
+                if livre:
+                    posicoes_ataque.append((x, ty))
+
+    # === 4️⃣ Se já está em posição ideal, plantar bomba ===
+    if (x, y) in posicoes_ataque and player["bombas_ativas"] < player["max_bombas"]:
+        return "bomba"
+
+    # === 5️⃣ Se há posição de ataque viável, mover até ela ===
+    if posicoes_ataque:
+        caminho = bfs(posicoes_ataque)
+        if caminho and len(caminho) > 1:
+            prox = caminho[1]
+            return direcao_para((x, y), prox)
+
+    # === 6️⃣ Caso contrário, tentar encurralar o inimigo ===
+    viz_inimigo = vizinhos(ax, ay)
+    livres = [v for v in viz_inimigo if dentro(*v) and mapa[v[1]][v[0]] in [0, 3, 4] and not perigo(v)]
+    if livres:
+        # mover para bloquear rota de fuga
+        caminho = bfs(livres)
+        if caminho and len(caminho) > 1:
+            prox = caminho[1]
+            return direcao_para((x, y), prox)
+
+    # === 7️⃣ Se o caminho está bloqueado, destruir blocos na direção do inimigo ===
+    blocos = [(ix, iy) for iy in range(altura) for ix in range(largura)
+              if mapa[iy][ix] == 2 and abs(ix - ax) + abs(iy - ay) < 6]
+    if blocos:
+        alvo_bloco = min(blocos, key=lambda b: abs(b[0]-x) + abs(b[1]-y))
+        caminho = bfs([alvo_bloco])
+        if caminho and len(caminho) > 1:
+            prox = caminho[1]
+            return direcao_para((x, y), prox)
+
+    # === 8️⃣ Movimento tático leve se nada a fazer ===
+    livres = [p for p in vizinhos(x, y) if dentro(*p) and not perigo(p) and mapa[p[1]][p[0]] in [0, 3, 4]]
+    if livres:
+        prox = random.choice(livres)
+        return direcao_para((x, y), prox)
+
+    return "parado"
+
+
 
 def pegar_powerup(player, mapa, powerups, bombas):
     """
@@ -744,7 +884,7 @@ def decidir_acao(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_in
 
     if acao == 'atacar_e_desviar':
         # return atacar_e_desviar()
-        return andar_e_quebrar(estado["player"], mapa, estado["jogadores"], estado["bombas"])
+        return atacar_e_desviar(estado['player'], mapa, estado['jogadores'], estado['bombas'], estado['powerups'])
     elif acao == 'fugir':
         # return fugir()
         return andar_e_quebrar(estado["player"], mapa, estado["jogadores"], estado["bombas"])
