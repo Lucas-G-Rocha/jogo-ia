@@ -124,6 +124,16 @@ def criar_powerup(x, y, prob_bomba=PROB_BOMBA, prob_fogo=PROB_FOGO):
     return 0
 
 def desenhar_hud(pontos, tempo_restante):
+    print("=== IAs CARREGADAS ===")
+    print(f"Jogador 1: {p1} -> {ia_1}")
+    print(f"Jogador 2: {p2} -> {ia_2}") 
+    print(f"Jogador 3: {p3} -> {ia_3}")
+    print(f"Jogador 4: {p4} -> {ia_4}")
+
+    print("\n=== JOGADORES INICIALIZADOS ===")
+    for i, p in enumerate(players):
+        print(f"Jogador {i}: pos=({p.grid_x},{p.grid_y}), cor={p.frames[0].get_size() if p.frames else 'N/A'}, ia_fn={p.ia_fn}")
+
     pygame.draw.rect(screen, (30, 30, 30), (0, 0, WIDTH, HUD_HEIGHT))
     tempo_txt = font.render(f"Tempo: {int(tempo_restante)}s", True, (255, 255, 255))
     screen.blit(tempo_txt, (10, 10))
@@ -454,8 +464,8 @@ players = [
     # params: psX, psY, tipo, time, cor, ativo?, ia
     Player(0, 0, "ia", 0, 0, ativo=True, ia_fn=ia_1),
     Player(12, 0, "ia", 1, 1, ativo=True, ia_fn=ia_2),
-    Player(0, 10, "ia", 1, 1, ativo=True, ia_fn=ia_3),
-    Player(12, 10, "ia", 0, 0, ativo=True, ia_fn=ia_4),
+    Player(0, 10, "ia", 2, 2, ativo=True, ia_fn=ia_3),  
+    Player(12, 10, "ia", 3, 3, ativo=True, ia_fn=ia_4), 
     # Player(6, 5, "ia", 1, 4, ativo=True, ia_fn=ia_5),
 ]
 

@@ -12,7 +12,8 @@ sequenciaDeAcoes = []
 ACOES = ["bomba", "atacar, fugir, afastar, aproximar, pegar"]
 DIRECAO = ["cima", "baixo", "esquerda", "direita", "parado"]
 
-    
+RAIO_BUSCA_INIMIGO = 15  # Aumentado para busca mais agressiva
+RAIO_FUGA_MINIMO = 3   
 
 
 
@@ -139,9 +140,96 @@ def log_estado_jogo(player, jogadores, bombas, mapa):
 def distancia_manhattan(x1, y1, x2, y2):
     return abs(x1 - x2) + abs(y1 - y2)
 
+def tem_bomba_na_posicao(x, y, bombas):
+    """Verifica se já existe bomba na posição."""
+    for bomba in bombas:
+        if not bomba.get("explodida", False):
+            bx, by = bomba["pos"]
+            if bx == x and by == y:
+                return True
+    return False
+
+def calcular_zonas_perigo(bombas, mapa, player):
+    """Calcula todas as zonas de perigo das bombas ativas."""
+    largura, altura = len(mapa[0]), len(mapa)
+    zonas_perigo = set()
+    
+    for bomba in bombas:
+        if bomba.get("explodida", False):
+            continue
+            
+        bx, by = bomba["pos"]
+        alcance = bomba.get("alcance", player.get("bomba_nivel", 2))
+        
+        # Adiciona posição da bomba
+        zonas_perigo.add((bx, by))
+        
+        # Expande em 4 direções
+        for dx, dy in [(1,0), (-1,0), (0,1), (0,-1)]:
+            for i in range(1, alcance + 1):
+                nx, ny = bx + dx * i, by + dy * i
+                
+                # Verifica limites
+                if not (0 <= nx < largura and 0 <= ny < altura):
+                    break
+                    
+                # Paredes indestrutíveis bloqueiam
+                if mapa[ny][nx] == 2:
+                    break
+                    
+                zonas_perigo.add((nx, ny))
+                
+                # Paredes destrutíveis bloqueiam propagação
+                if mapa[ny][nx] == 1:
+                    break
+    
+    return zonas_perigo
 
 
-
+def tem_rota_fuga_segura(x, y, mapa, zonas_perigo_atuais, alcance_bomba):
+    """
+    Verifica se há pelo menos UMA rota de fuga viável.
+    Simula a bomba sendo colocada em (x,y) e busca caminho seguro.
+    """
+    largura, altura = len(mapa[0]), len(mapa)
+    
+    # Simula zona de perigo da nova bomba
+    zonas_perigo_simuladas = set(zonas_perigo_atuais)
+    zonas_perigo_simuladas.add((x, y))
+    
+    for dx, dy in [(1,0), (-1,0), (0,1), (0,-1)]:
+        for i in range(1, alcance_bomba + 1):
+            nx, ny = x + dx * i, y + dy * i
+            if not (0 <= nx < largura and 0 <= ny < altura):
+                break
+            if mapa[ny][nx] == 2:
+                break
+            zonas_perigo_simuladas.add((nx, ny))
+            if mapa[ny][nx] == 1:
+                break
+    
+    # BFS para encontrar posição segura
+    fila = deque([(x, y, 0)])
+    visitados = {(x, y)}
+    
+    while fila:
+        cx, cy, dist = fila.popleft()
+        
+        # Se encontrou posição segura a distância mínima
+        if (cx, cy) not in zonas_perigo_simuladas and dist >= RAIO_FUGA_MINIMO:
+            return True
+        
+        # Explora vizinhos
+        for dx, dy in [(1,0), (-1,0), (0,1), (0,-1)]:
+            nx, ny = cx + dx, cy + dy
+            
+            if (0 <= nx < largura and 0 <= ny < altura and 
+                (nx, ny) not in visitados and 
+                mapa[ny][nx] in [0, 3, 4]):  # Livre ou powerup
+                
+                visitados.add((nx, ny))
+                fila.append((nx, ny, dist + 1))
+    
     
 def filtrarDadosTreinamento(dadosDeTreinamento, **filtros):
     """
@@ -311,9 +399,235 @@ def dados_treinamento_fixos():
 
 
 def fugir():
-    return 'cima'
-def atacar_e_desviar():
-    return 'bomba'
+   return random.choice(['cima', 'baixo', 'esquerda', 'direita'])
+
+
+import random
+from collections import deque
+
+def atacar_e_desviar(player, mapa, jogadores, bombas, powerups):
+    """
+    CORREÇÃO: Agora valida que jogadores[] não contém o próprio player.
+    """
+    x, y = player["pos"]
+    id_player = player["id"]
+    largura, altura = len(mapa[0]), len(mapa)
+    alcance_bomba = player.get("bomba_nivel", 2)
+    bombas_ativas = player.get("bombas_ativas", 0)
+    max_bombas = player.get("max_bombas", 1)
+    
+    print(f"\n⚔️ MODO COMBATE - Player {id_player} em ({x},{y})")
+    print(f"   Bombas: {bombas_ativas}/{max_bombas} | Alcance: {alcance_bomba}")
+    
+    def dentro(a, b):
+        return 0 <= a < largura and 0 <= b < altura
+    
+    def direcao_para(orig, dest):
+        ox, oy = orig
+        dx, dy = dest
+        if dx > ox: return "direita"
+        if dx < ox: return "esquerda"
+        if dy > oy: return "baixo"
+        if dy < oy: return "cima"
+        return "parado"
+    
+    def celula_livre(nx, ny):
+        return dentro(nx, ny) and mapa[ny][nx] in [0, 3, 4]
+    
+    # Calcular zonas de perigo
+    zonas_perigo = calcular_zonas_perigo(bombas, mapa, player)
+    
+    # Fuga emergencial
+    if (x, y) in zonas_perigo:
+        print("  🚨 PERIGO CRÍTICO - Fugindo!")
+        
+        melhores_fugas = []
+        for dx, dy in [(1,0), (-1,0), (0,1), (0,-1)]:
+            nx, ny = x + dx, y + dy
+            if celula_livre(nx, ny) and (nx, ny) not in zonas_perigo:
+                dist_min_bomba = min(
+                    distancia_manhattan(nx, ny, *b["pos"]) 
+                    for b in bombas if not b.get("explodida", False)
+                ) if bombas else 999
+                melhores_fugas.append(((nx, ny), dist_min_bomba))
+        
+        if melhores_fugas:
+            melhor = max(melhores_fugas, key=lambda x: x[1])
+            print(f"    → Fugindo para {melhor[0]} (dist: {melhor[1]})")
+            return direcao_para((x, y), melhor[0])
+        
+        return "parado"
+    
+    # CORREÇÃO: Valida que jogadores não contém o próprio player
+    inimigos = []
+    for j in jogadores:
+        if not j["ativo"]:
+            continue
+        
+        jx, jy = j["pos"]
+        
+        # VALIDAÇÃO: Não adiciona se for a mesma posição
+        if jx == x and jy == y:
+            print(f"  ⚠️ Ignorando jogador na mesma posição (ID: {j['id']})")
+            continue
+        
+        # VALIDAÇÃO: Não adiciona se for o mesmo ID
+        if j["id"] == id_player:
+            print(f"  ⚠️ Ignorando próprio player (ID: {j['id']})")
+            continue
+        
+        inimigos.append(j)
+    
+    if not inimigos:
+        print("  ❌ SEM INIMIGOS - Modo exploração")
+        return quebrar_blocos_proximo(x, y, mapa, bombas_ativas, max_bombas, zonas_perigo, alcance_bomba, bombas)
+    
+    print(f"  🎯 {len(inimigos)} inimigos detectados")
+    
+    # Selecionar alvo prioritário
+    alvos_priorizados = []
+    for inimigo in inimigos:
+        ax, ay = inimigo["pos"]
+        dist = distancia_manhattan(x, y, ax, ay)
+        
+        vizinhos_livres = sum(
+            1 for dx, dy in [(1,0),(-1,0),(0,1),(0,-1)]
+            if dentro(ax+dx, ay+dy) and mapa[ay+dy][ax+dx] == 0
+        )
+        
+        score = dist - (vizinhos_livres * 2)
+        alvos_priorizados.append((inimigo, dist, score))
+    
+    alvo, dist_alvo, _ = min(alvos_priorizados, key=lambda t: t[2])
+    ax, ay = alvo["pos"]
+    
+    print(f"  🎯 ALVO: Inimigo ID {alvo['id']} em ({ax},{ay}) | Distância: {dist_alvo}")
+    
+    # Ataque direto
+    alinhado_horizontal = (y == ay and abs(x - ax) <= alcance_bomba + 2)
+    alinhado_vertical = (x == ax and abs(y - ay) <= alcance_bomba + 2)
+    
+    if (alinhado_horizontal or alinhado_vertical) and dist_alvo <= alcance_bomba + 2:
+        caminho_livre = True
+        
+        if alinhado_horizontal:
+            for ix in range(min(x, ax) + 1, max(x, ax)):
+                if mapa[y][ix] not in [0, 3, 4]:
+                    caminho_livre = False
+                    break
+        
+        if alinhado_vertical:
+            for iy in range(min(y, ay) + 1, max(y, ay)):
+                if mapa[iy][x] not in [0, 3, 4]:
+                    caminho_livre = False
+                    break
+        
+        if caminho_livre and bombas_ativas < max_bombas and not tem_bomba_na_posicao(x, y, bombas):
+            tem_fuga = tem_rota_fuga_segura(x, y, mapa, zonas_perigo, alcance_bomba)
+            inimigo_muito_proximo = dist_alvo <= 2
+            
+            if tem_fuga or inimigo_muito_proximo:
+                print(f"    💣 BOMBA TÁTICA! (fuga: {tem_fuga}, prox: {inimigo_muito_proximo})")
+                return "bomba"
+    
+    # Perseguição
+    if dist_alvo <= RAIO_BUSCA_INIMIGO:
+        print(f"    🏃 PERSEGUINDO ALVO...")
+        
+        movimentos_possiveis = []
+        
+        for dx, dy in [(1,0), (-1,0), (0,1), (0,-1)]:
+            nx, ny = x + dx, y + dy
+            
+            if not celula_livre(nx, ny) or (nx, ny) in zonas_perigo:
+                continue
+            
+            nova_dist = distancia_manhattan(nx, ny, ax, ay)
+            
+            score = -nova_dist * 10
+            
+            if nx == ax or ny == ay:
+                score += 30
+            
+            if abs(nx - ax) <= 2 and abs(ny - ay) <= 2:
+                score += 20
+            
+            if nova_dist > RAIO_BUSCA_INIMIGO:
+                score -= 50
+            
+            movimentos_possiveis.append(((nx, ny), score))
+        
+        if movimentos_possiveis:
+            melhor = max(movimentos_possiveis, key=lambda m: m[1])
+            print(f"      → Movimento: {melhor[0]} (score: {melhor[1]})")
+            return direcao_para((x, y), melhor[0])
+    
+    # Busca ativa
+    print(f"    🔍 BUSCANDO INIMIGO...")
+    
+    movimentos = []
+    for dx, dy in [(1,0), (-1,0), (0,1), (0,-1)]:
+        nx, ny = x + dx, y + dy
+        if celula_livre(nx, ny) and (nx, ny) not in zonas_perigo:
+            dist = distancia_manhattan(nx, ny, ax, ay)
+            movimentos.append(((nx, ny), dist))
+    
+    if movimentos:
+        melhor = min(movimentos, key=lambda m: m[1])
+        return direcao_para((x, y), melhor[0])
+    
+    # Fallback
+    return quebrar_blocos_proximo(x, y, mapa, bombas_ativas, max_bombas, zonas_perigo, alcance_bomba, bombas)
+
+
+def quebrar_blocos_proximo(x, y, mapa, bombas_ativas, max_bombas, zonas_perigo, alcance_bomba, bombas):
+    """Quebra blocos quando não há inimigos."""
+    largura, altura = len(mapa[0]), len(mapa)
+    
+    for dx, dy in [(1,0), (-1,0), (0,1), (0,-1)]:
+        nx, ny = x + dx, y + dy
+        if 0 <= nx < largura and 0 <= ny < altura and mapa[ny][nx] == 1:
+            if bombas_ativas < max_bombas and not tem_bomba_na_posicao(x, y, bombas):
+                if tem_rota_fuga_segura(x, y, mapa, zonas_perigo, alcance_bomba):
+                    print(f"    💣 Quebrando bloco adjacente")
+                    return "bomba"
+    
+    blocos_proximos = []
+    for iy in range(altura):
+        for ix in range(largura):
+            if mapa[iy][ix] == 1:
+                dist = distancia_manhattan(x, y, ix, iy)
+                if dist < 8:
+                    blocos_proximos.append((ix, iy, dist))
+    
+    if blocos_proximos:
+        bloco = min(blocos_proximos, key=lambda b: b[2])
+        bx, by, _ = bloco
+        
+        movimentos = []
+        for dx, dy in [(1,0), (-1,0), (0,1), (0,-1)]:
+            nx, ny = x + dx, y + dy
+            if (0 <= nx < largura and 0 <= ny < altura and 
+                mapa[ny][nx] == 0 and (nx, ny) not in zonas_perigo):
+                dist = distancia_manhattan(nx, ny, bx, by)
+                movimentos.append(((nx, ny), dist))
+        
+        if movimentos:
+            melhor = min(movimentos, key=lambda m: m[1])
+            return "direita" if melhor[0][0] > x else "esquerda" if melhor[0][0] < x else "baixo" if melhor[0][1] > y else "cima"
+    
+    for dx, dy in [(1,0), (-1,0), (0,1), (0,-1)]:
+        nx, ny = x + dx, y + dy
+        if (0 <= nx < largura and 0 <= ny < altura and 
+            mapa[ny][nx] == 0 and (nx, ny) not in zonas_perigo):
+            return "direita" if dx == 1 else "esquerda" if dx == -1 else "baixo" if dy == 1 else "cima"
+    
+    return "parado"
+    
+# Função auxiliar necessária
+def distancia_manhattan(x1, y1, x2, y2):
+    return abs(x1 - x2) + abs(y1 - y2)
+
 
 def pegar_powerup(player, mapa, powerups, bombas):
     """
@@ -454,6 +768,33 @@ def pegar_powerup(player, mapa, powerups, bombas):
 
 
 def andar_e_quebrar(player, mapa, jogadores, bombas):
+    print(f"🔧 andar_e_quebrar INICIADA - Player: {player['pos']}")
+    
+    pos = player["pos"]
+    x, y = pos
+    largura = len(mapa[0])
+    altura = len(mapa)
+
+    # Debug do mapa ao redor
+    print(f"🗺️  Mapa ao redor de ({x},{y}):")
+    for dy in range(-1, 2):
+        linha = ""
+        for dx in range(-1, 2):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < largura and 0 <= ny < altura:
+                celula = mapa[ny][nx]
+                simbolo = {
+                    0: "·",  # chão
+                    1: "█",  # bloco quebrável  
+                    2: "▓",  # parede indestrutível
+                    3: "B",  # powerup bomba
+                    4: "F"   # powerup fogo
+                }.get(celula, "?")
+                linha += f"{simbolo} "
+            else:
+                linha += "X "
+        print(f"    {linha}")
+    
     pos = player["pos"]
     x, y = pos
     largura = len(mapa[0])
@@ -583,19 +924,42 @@ def achar_bloco_quebravel_mais_proximo(mapa, origem, zonas_perigo):
 
 def extrair_informacoes(player, mapa, jogadores, bombas):
     """
-    Extrai informações do estado atual do jogo para uso em IA.
-    Retorna um dicionário com posições e status relevantes.
+    CORREÇÃO: Agora pega o ID correto do player para evitar
+    que ele se detecte como inimigo.
     """
+    # Tenta pegar o ID de várias formas possíveis
+    if hasattr(player, 'id'):
+        player_id = player.id
+    elif isinstance(player, dict) and 'id' in player:
+        player_id = player['id']
+    else:
+        # Fallback: encontra o player na lista de jogadores pela posição
+        player_pos = (player.grid_x if hasattr(player, 'grid_x') else player['pos'][0],
+                      player.grid_y if hasattr(player, 'grid_y') else player['pos'][1])
+        
+        player_id = None
+        for i, j in enumerate(jogadores):
+            j_pos = (j.grid_x if hasattr(j, 'grid_x') else j['pos'][0],
+                     j.grid_y if hasattr(j, 'grid_y') else j['pos'][1])
+            if j_pos == player_pos:
+                player_id = i
+                break
+        
+        if player_id is None:
+            player_id = 0
+    
+    print(f"🆔 Player ID detectado: {player_id}")
 
     info = {
         "player": {
-    "id": getattr(player, "id", 0),
-    "pos": (player.grid_x, player.grid_y),
-    "ativo": player.ativo,
-    "bomba_nivel": player.bomba_nivel,
-    "max_bombas": player.max_bombas,
-    "bombas_ativas": len(player.bombas)
-    },
+            "id": player_id,
+            "pos": (player.grid_x if hasattr(player, 'grid_x') else player['pos'][0],
+                    player.grid_y if hasattr(player, 'grid_y') else player['pos'][1]),
+            "ativo": player.ativo if hasattr(player, 'ativo') else player.get('ativo', True),
+            "bomba_nivel": player.bomba_nivel if hasattr(player, 'bomba_nivel') else player.get('bomba_nivel', 1),
+            "max_bombas": player.max_bombas if hasattr(player, 'max_bombas') else player.get('max_bombas', 1),
+            "bombas_ativas": len(player.bombas) if hasattr(player, 'bombas') else player.get('bombas_ativas', 0)
+        },
         "jogadores": [],
         "bombas": [],
         "powerups": [],
@@ -603,31 +967,36 @@ def extrair_informacoes(player, mapa, jogadores, bombas):
         "tem_powerups": False
     }
 
-    # Jogadores
-    for j in jogadores:
+    # CORREÇÃO: Filtra o próprio jogador
+    for i, j in enumerate(jogadores):
+        if i == player_id:  # ← PULA A SI MESMO
+            continue
+            
         info["jogadores"].append({
-            "id": jogadores.index(j),
-            "pos": (j.grid_x, j.grid_y),
-            "ativo": j.ativo,
-            "time": j.time
+            "id": i,
+            "pos": (j.grid_x if hasattr(j, 'grid_x') else j['pos'][0],
+                    j.grid_y if hasattr(j, 'grid_y') else j['pos'][1]),
+            "ativo": j.ativo if hasattr(j, 'ativo') else j.get('ativo', True),
+            "time": j.time if hasattr(j, 'time') else j.get('time', 0)
         })
 
     # Bombas
     for b in bombas:
         info["bombas"].append({
-        "pos": (b.x, b.y),
-        "nivel": b.nivel,
-        "explodida": b.explodida,
-        "tempo_explosao": b.tempo_explosao,
-        "ativo": not b.explodida,  # ativa enquanto não explodir
-        "owner_id": getattr(b, "owner_id", None)  # se existir, adiciona o dono
-    })
+            "pos": (b.x if hasattr(b, 'x') else b['pos'][0],
+                    b.y if hasattr(b, 'y') else b['pos'][1]),
+            "nivel": b.nivel if hasattr(b, 'nivel') else b.get('nivel', 1),
+            "explodida": b.explodida if hasattr(b, 'explodida') else b.get('explodida', False),
+            "tempo_explosao": b.tempo_explosao if hasattr(b, 'tempo_explosao') else b.get('tempo_explosao', 4),
+            "ativo": not (b.explodida if hasattr(b, 'explodida') else b.get('explodida', False)),
+            "owner_id": getattr(b, "owner_id", None)
+        })
     info["tem_bombas"] = len(info["bombas"]) > 0
 
     # PowerUps
     for y, linha in enumerate(mapa):
         for x, val in enumerate(linha):
-            if val in [3, 4]:  # 3 = bomba, 4 = fogo
+            if val in [3, 4]:
                 info["powerups"].append({
                     "pos": (x, y),
                     "tipo": "bomba" if val == 3 else "fogo"
@@ -635,7 +1004,6 @@ def extrair_informacoes(player, mapa, jogadores, bombas):
     info["tem_powerups"] = len(info["powerups"]) > 0
 
     return info
-
 
 
 
@@ -650,15 +1018,9 @@ def transformar_dados(
     limite_powerup=6
 ):
     """
-    Transforma o estado atual do jogo em um dicionário simplificado,
-    compatível com os dados gerados por gerar_dados_treinamento().
-
-    Retorna apenas:
-    perigo, mais_de_um_jogador_perto, oportunidade,
-    funcao, neutro, player_com_powerup, powerup_existe.
+    CORREÇÃO: Agora valida que não está calculando distância
+    para si mesmo.
     """
-
-    # --- Inicialização do dicionário base ---
     dados = {
         'perigo': 0,
         'mais_de_um_jogador_perto': 0,
@@ -668,90 +1030,103 @@ def transformar_dados(
         'powerup_existe': 0,
     }
 
-
-    # Caso o player não tenha posição válida
     if not player.get('pos'):
         return dados
 
     px, py = player['pos']
+    player_id = player['id']
+    
+    print(f"🔍 transformar_dados para player {player_id} em ({px},{py})")
 
-    # --- Distâncias dos jogadores ---
+    # CORREÇÃO: Filtra jogadores (já vem filtrado de extrair_informacoes)
     distancias_jogadores = []
-    for j in jogadores[:4]:
-        if j['ativo'] and j.get('pos'):
-            d = distancia_manhattan(px, py, *j['pos'])
-            if j['id'] != player['id']:
-                distancias_jogadores.append(d)
+    for j in jogadores:
+        if not j['ativo'] or not j.get('pos'):
+            continue
+        
+        # VALIDAÇÃO EXTRA: Confirma que não é o próprio jogador
+        jx, jy = j['pos']
+        if jx == px and jy == py:
+            print(f"  ⚠️ Pulando jogador na mesma posição (ID: {j['id']})")
+            continue
+        
+        d = distancia_manhattan(px, py, jx, jy)
+        distancias_jogadores.append(d)
+        print(f"  🎯 Jogador {j['id']} em {j['pos']} → distância: {d}")
 
-    # --- Lógica de jogadores próximos ---
-    jogadores_perto = [d for d in distancias_jogadores if d < 5]
+    # Lógica de perigo
+    jogadores_perto = [d for d in distancias_jogadores if d < 3]
+    print(f"  📊 Jogadores perto (dist < 3): {jogadores_perto}")
+    
     if len(jogadores_perto) >= 1:
         dados['perigo'] = 1
+        print(f"  🚨 PERIGO DETECTADO: {len(jogadores_perto)} jogador(es) próximo(s)")
     if len(jogadores_perto) > 1:
         dados['mais_de_um_jogador_perto'] = 1
 
-    # --- PowerUp ---
+    # PowerUp
     if len(powerups) > 0:
         dados['powerup_existe'] = 1
-        # Pega o powerup mais próximo
         dist_p = min(
             distancia_manhattan(px, py, *p['pos'])
             for p in powerups if p.get('pos')
         )
-        # Se existe powerup e está dentro do limite de distância
         if dist_p <= limite_powerup and not dados['perigo']:
             dados['oportunidade'] = 1
     else:
         dados['powerup_existe'] = 0
 
-    # --- Caso nenhum perigo ou oportunidade ---
+    # Neutro
     if not dados['perigo'] and not dados['oportunidade']:
         dados['neutro'] = 1
 
-    # --- Powerup do player ---
+    # Powerup do player
     if player.get('tem_powerup', False):
         dados['player_com_powerup'] = 1
 
+    print(f"  📋 Dados finais: {dados}")
     return dados
 
 
 
 
-
 def decidir_acao(player, mapa, jogadores, bombas, tempo_restante, pontos, hud_info, self_state):
-    # estadoDeJogo = extrair_informacoes(player, mapa, jogadores, bombas)
-    # print('\n\n estado de jogo \n\n')
-    # print(estadoDeJogo)
-    estado = extrair_informacoes(player, mapa, jogadores, bombas)
-    print('\n\n Extrair Informações\n')
-    print(estado)
-    # Transforma o estado em dados estruturados para IA
-    exemploDadoReal = transformar_dados(
-        estado["player"],
-        estado["jogadores"],
-        estado["bombas"],
-        estado["powerups"],
-        distancia_manhattan
-    )
+    try:
+        estado = extrair_informacoes(player, mapa, jogadores, bombas)
+        print(f'\n🎮 Estado do Jogo - Player: {estado["player"]["pos"]}')
+        
+        exemploDadoReal = transformar_dados(
+            estado["player"],
+            estado["jogadores"],
+            estado["bombas"],
+            estado["powerups"],
+            distancia_manhattan
+        )
 
-    print("\n--- Estado Transformado ---")
-    print(exemploDadoReal)
-    dataframeTreino = pd.DataFrame(dados_treinamento_fixos())
-    dadoReal = pd.DataFrame([exemploDadoReal])
+        print(f"📊 Dados para IA: {exemploDadoReal}")
+        
+        dataframeTreino = pd.DataFrame(dados_treinamento_fixos())
+        dadoReal = pd.DataFrame([exemploDadoReal])
 
-    result = arvorePredict(dadoReal, dataframeTreino)
-    acao = result[0]
+        result = arvorePredict(dadoReal, dataframeTreino)
+        acao = result[0]
+        print(f"🤖 Ação decidida pela IA: {acao}")
 
-    if acao == 'atacar_e_desviar':
-        # return atacar_e_desviar()
-        return andar_e_quebrar(estado["player"], mapa, estado["jogadores"], estado["bombas"])
-    elif acao == 'fugir':
-        # return fugir()
-        return andar_e_quebrar(estado["player"], mapa, estado["jogadores"], estado["bombas"])
-    elif acao == 'pegar_powerUp':
-        return pegar_powerup(estado["player"], mapa, estado["powerups"], estado["bombas"])
-    elif acao == 'andar_e_quebrar':
-        # return andar_e_quebrar()
-        return andar_e_quebrar(estado["player"], mapa, estado["jogadores"], estado["bombas"])
-    log_estado_jogo(player, jogadores, bombas, mapa)
-    
+        # Dispatch das ações
+        if acao == 'atacar_e_desviar':
+            resultado = atacar_e_desviar(estado["player"], mapa, estado["jogadores"], estado["bombas"], estado["powerups"])
+        elif acao == 'fugir':
+            resultado = fugir()
+        elif acao == 'pegar_powerUp':
+            resultado = pegar_powerup(estado["player"], mapa, estado["powerups"], estado["bombas"])
+        elif acao == 'andar_e_quebrar':
+            resultado = andar_e_quebrar(estado["player"], mapa, estado["jogadores"], estado["bombas"])
+        else:
+            resultado = "parado"
+
+        print(f"🎯 Ação final: {resultado}")
+        return resultado
+
+    except Exception as e:
+        print(f"❌ Erro em decidir_acao: {e}")
+        return "parado"
